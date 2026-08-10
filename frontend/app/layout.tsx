@@ -71,22 +71,17 @@ export default async function RootLayout({ children }: RootLayoutProps) {
           enableSystem
           disableTransitionOnChange
         >
-          <header className="fixed top-0 left-0 z-50 hidden w-full flex-row justify-between p-6 md:flex">
-            <a
-              target="_blank"
-              rel="noopener noreferrer"
-              href="https://livekit.io"
-              className="scale-100 transition-transform duration-300 hover:scale-110"
-            >
+          <header className="fixed top-0 left-0 z-50 flex w-full flex-row items-center justify-between p-6">
+            <div className="scale-100 transition-transform duration-300 hover:scale-110">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logo} alt={`${companyName} Logo`} className="block size-6 dark:hidden" />
+              <img src={logo} alt={`${companyName} Logo`} className="block h-8 w-auto dark:hidden" />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={logoDark ?? logo}
                 alt={`${companyName} Logo`}
-                className="hidden size-6 dark:block"
+                className="hidden h-8 w-auto dark:block"
               />
-            </a>
+            </div>
             <span className="text-foreground font-mono text-xs font-bold tracking-wider uppercase">
               Built with{' '}
               <a

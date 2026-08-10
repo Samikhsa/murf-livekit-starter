@@ -1,7 +1,9 @@
+from unittest.mock import patch
+
 import pytest
 from livekit.agents import AgentSession, inference, llm
 
-from agent import Assistant
+from agent import Assistant, get_llm_provider
 
 
 def _llm() -> llm.LLM:
@@ -38,6 +40,60 @@ async def test_offers_assistance() -> None:
 
         # Ensures there are no function calls or other unexpected events
         result.expect.no_more_events()
+
+
+def test_get_llm_provider_uses_openrouter_when_configured() -> None:
+    with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}, clear=True):
+        provider = get_llm_provider()
+        assert provider["provider"] == "openrouter"
+        assert provider["model"] == "openai/gpt-4o-mini"
+        assert provider["base_url"] == "https://openrouter.ai/api/v1"
+
+
+def test_get_llm_provider_defaults_to_google() -> None:
+    with patch.dict("os.environ", {}, clear=True):
+        with patch("agent._load_backend_env", return_value=None):
+            provider = get_llm_provider()
+        assert provider["provider"] == "google"
+        assert provider["model"] == "gemini-2.0-flash"
+
+
+def test_get_llm_provider_prefers_google_by_default_when_both_keys_exist() -> None:
+    with patch.dict(
+        "os.environ",
+        {"GOOGLE_API_KEY": "google-key", "OPENROUTER_API_KEY": "router-key"},
+        clear=True,
+    ):
+        with patch("agent._load_backend_env", return_value=None):
+            provider = get_llm_provider()
+        assert provider["provider"] == "google"
+        assert provider["model"] == "gemini-2.0-flash"
+
+
+@pytest.mark.asyncio
+async def test_falls_back_when_llm_generation_fails() -> None:
+    """The agent should still return a helpful response if the LLM path errors."""
+
+    async def fake_llm_node(*args, **kwargs):
+        if False:
+            yield None
+        raise RuntimeError("simulated llm failure")
+
+    with (
+        patch("agent.Agent.default.llm_node", new=fake_llm_node),
+        patch("agent.AsyncOpenAI", side_effect=RuntimeError("simulated openrouter failure")),
+    ):
+        chunks = [
+            chunk
+            async for chunk in Assistant().llm_node(
+                chat_ctx=llm.ChatContext(),
+                tools=[],
+                model_settings=None,
+            )
+        ]
+
+    assert chunks
+    assert any("trouble replying" in chunk.lower() for chunk in chunks)
 
 
 @pytest.mark.asyncio

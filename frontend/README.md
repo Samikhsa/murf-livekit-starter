@@ -35,6 +35,8 @@ LIVEKIT_API_SECRET=your_secret
 AGENT_NAME=my-agent
 ```
 
+> Note: In Next.js App Router, static files like `favicon.ico` must live in `public/`, not inside `app/`. If a favicon is placed in `app/`, it can break the production build.
+
 ### 3. Run
 
 ```bash

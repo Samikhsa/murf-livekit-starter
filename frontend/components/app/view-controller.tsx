@@ -4,11 +4,11 @@ import { useTheme } from 'next-themes';
 import { AnimatePresence, motion } from 'motion/react';
 import { useSessionContext } from '@livekit/components-react';
 import type { AppConfig } from '@/app-config';
-import { AgentSessionView_01 } from '@/components/agents-ui/blocks/agent-session-view-01';
+import { MitraSessionView } from '@/components/app/mitra-session-view';
 import { WelcomeView } from '@/components/app/welcome-view';
 
 const MotionWelcomeView = motion.create(WelcomeView);
-const MotionSessionView = motion.create(AgentSessionView_01);
+const MotionSessionView = motion.create(MitraSessionView);
 
 const VIEW_MOTION_PROPS = {
   variants: {
@@ -52,25 +52,10 @@ export function ViewController({ appConfig }: ViewControllerProps) {
         <MotionSessionView
           key="session-view"
           {...VIEW_MOTION_PROPS}
-          supportsChatInput={appConfig.supportsChatInput}
-          supportsVideoInput={appConfig.supportsVideoInput}
-          supportsScreenShare={appConfig.supportsScreenShare}
-          isPreConnectBufferEnabled={appConfig.isPreConnectBufferEnabled}
-          audioVisualizerType={appConfig.audioVisualizerType}
-          audioVisualizerColor={
-            resolvedTheme === 'dark'
-              ? appConfig.audioVisualizerColorDark
-              : appConfig.audioVisualizerColor
-          }
-          audioVisualizerColorShift={appConfig.audioVisualizerColorShift}
-          audioVisualizerBarCount={appConfig.audioVisualizerBarCount}
-          audioVisualizerGridRowCount={appConfig.audioVisualizerGridRowCount}
-          audioVisualizerGridColumnCount={appConfig.audioVisualizerGridColumnCount}
-          audioVisualizerRadialBarCount={appConfig.audioVisualizerRadialBarCount}
-          audioVisualizerRadialRadius={appConfig.audioVisualizerRadialRadius}
-          audioVisualizerWaveLineWidth={appConfig.audioVisualizerWaveLineWidth}
           className="fixed inset-0"
-        />
+        >
+          <MitraSessionView />
+        </MotionSessionView>
       )}
     </AnimatePresence>
   );

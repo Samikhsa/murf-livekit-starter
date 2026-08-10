@@ -1,0 +1,341 @@
+{
+  "_meta": {
+    "store": "ABC Local Store",
+    "currency": "INR",
+    "price_last_updated": "2026-08-10",
+    "data_source": "local",
+    "note": "Hand-built local dataset. Prices are representative of pan-India retail rates as of the date above. Not a live API feed."
+  },
+  "products": [
+    {
+      "id": "rice_basmati_1kg",
+      "name": "Basmati Rice",
+      "name_hi": "बासमती चावल",
+      "category": "Grains",
+      "unit": "1 kg",
+      "price_inr": 120,
+      "in_stock": true,
+      "quantity_available": 45,
+      "keywords": ["rice", "chawal", "basmati", "grain", "anaj"]
+    },
+    {
+      "id": "rice_sona_masoori_1kg",
+      "name": "Sona Masoori Rice",
+      "name_hi": "सोना मसूरी चावल",
+      "category": "Grains",
+      "unit": "1 kg",
+      "price_inr": 65,
+      "in_stock": true,
+      "quantity_available": 30,
+      "keywords": ["rice", "chawal", "sona masoori", "grain"]
+    },
+    {
+      "id": "wheat_flour_1kg",
+      "name": "Whole Wheat Flour (Atta)",
+      "name_hi": "गेहूं का आटा",
+      "category": "Grains",
+      "unit": "1 kg",
+      "price_inr": 45,
+      "in_stock": true,
+      "quantity_available": 60,
+      "keywords": ["atta", "flour", "wheat", "aata", "gehu"]
+    },
+    {
+      "id": "toor_dal_1kg",
+      "name": "Toor Dal (Yellow Pigeon Peas)",
+      "name_hi": "तुअर दाल",
+      "category": "Pulses",
+      "unit": "1 kg",
+      "price_inr": 130,
+      "in_stock": true,
+      "quantity_available": 25,
+      "keywords": ["toor dal", "arhar dal", "dal", "pulse", "daal"]
+    },
+    {
+      "id": "moong_dal_1kg",
+      "name": "Moong Dal (Split Green Gram)",
+      "name_hi": "मूंग दाल",
+      "category": "Pulses",
+      "unit": "1 kg",
+      "price_inr": 110,
+      "in_stock": true,
+      "quantity_available": 20,
+      "keywords": ["moong dal", "mung dal", "green gram", "dal", "pulse"]
+    },
+    {
+      "id": "chana_dal_1kg",
+      "name": "Chana Dal (Split Chickpeas)",
+      "name_hi": "चना दाल",
+      "category": "Pulses",
+      "unit": "1 kg",
+      "price_inr": 95,
+      "in_stock": true,
+      "quantity_available": 18,
+      "keywords": ["chana dal", "chickpea", "dal", "pulse", "chane"]
+    },
+    {
+      "id": "masoor_dal_1kg",
+      "name": "Masoor Dal (Red Lentils)",
+      "name_hi": "मसूर दाल",
+      "category": "Pulses",
+      "unit": "1 kg",
+      "price_inr": 100,
+      "in_stock": true,
+      "quantity_available": 22,
+      "keywords": ["masoor dal", "red lentil", "dal", "pulse"]
+    },
+    {
+      "id": "milk_full_cream_1l",
+      "name": "Full Cream Milk",
+      "name_hi": "फुल क्रीम दूध",
+      "category": "Dairy",
+      "unit": "1 litre",
+      "price_inr": 60,
+      "in_stock": true,
+      "quantity_available": 40,
+      "keywords": ["milk", "doodh", "dairy", "full cream"]
+    },
+    {
+      "id": "curd_500g",
+      "name": "Fresh Curd (Dahi)",
+      "name_hi": "दही",
+      "category": "Dairy",
+      "unit": "500 g",
+      "price_inr": 40,
+      "in_stock": true,
+      "quantity_available": 15,
+      "keywords": ["curd", "dahi", "yogurt", "dairy"]
+    },
+    {
+      "id": "paneer_200g",
+      "name": "Fresh Paneer",
+      "name_hi": "पनीर",
+      "category": "Dairy",
+      "unit": "200 g",
+      "price_inr": 80,
+      "in_stock": true,
+      "quantity_available": 8,
+      "keywords": ["paneer", "cottage cheese", "cheese", "dairy"]
+    },
+    {
+      "id": "butter_100g",
+      "name": "Butter",
+      "name_hi": "मक्खन",
+      "category": "Dairy",
+      "unit": "100 g",
+      "price_inr": 55,
+      "in_stock": true,
+      "quantity_available": 12,
+      "keywords": ["butter", "makhan", "dairy"]
+    },
+    {
+      "id": "cooking_oil_sunflower_1l",
+      "name": "Sunflower Cooking Oil",
+      "name_hi": "सूरजमुखी तेल",
+      "category": "Groceries",
+      "unit": "1 litre",
+      "price_inr": 135,
+      "in_stock": true,
+      "quantity_available": 30,
+      "keywords": ["oil", "tel", "cooking oil", "sunflower oil", "sunflower"]
+    },
+    {
+      "id": "cooking_oil_mustard_1l",
+      "name": "Mustard Oil",
+      "name_hi": "सरसों का तेल",
+      "category": "Groceries",
+      "unit": "1 litre",
+      "price_inr": 150,
+      "in_stock": true,
+      "quantity_available": 20,
+      "keywords": ["mustard oil", "sarson tel", "oil", "tel"]
+    },
+    {
+      "id": "sugar_1kg",
+      "name": "Sugar",
+      "name_hi": "चीनी",
+      "category": "Groceries",
+      "unit": "1 kg",
+      "price_inr": 42,
+      "in_stock": true,
+      "quantity_available": 55,
+      "keywords": ["sugar", "cheeni", "chini"]
+    },
+    {
+      "id": "salt_1kg",
+      "name": "Iodised Salt",
+      "name_hi": "आयोडीन नमक",
+      "category": "Groceries",
+      "unit": "1 kg",
+      "price_inr": 20,
+      "in_stock": true,
+      "quantity_available": 70,
+      "keywords": ["salt", "namak", "iodised salt"]
+    },
+    {
+      "id": "onion_1kg",
+      "name": "Onion",
+      "name_hi": "प्याज",
+      "category": "Groceries",
+      "unit": "1 kg",
+      "price_inr": 35,
+      "in_stock": true,
+      "quantity_available": 80,
+      "keywords": ["onion", "pyaz", "pyaaj"]
+    },
+    {
+      "id": "potato_1kg",
+      "name": "Potato",
+      "name_hi": "आलू",
+      "category": "Groceries",
+      "unit": "1 kg",
+      "price_inr": 28,
+      "in_stock": true,
+      "quantity_available": 100,
+      "keywords": ["potato", "aloo", "alu"]
+    },
+    {
+      "id": "tomato_1kg",
+      "name": "Tomato",
+      "name_hi": "टमाटर",
+      "category": "Groceries",
+      "unit": "1 kg",
+      "price_inr": 40,
+      "in_stock": true,
+      "quantity_available": 50,
+      "keywords": ["tomato", "tamatar", "tamatar"]
+    },
+    {
+      "id": "tea_leaves_250g",
+      "name": "Black Tea Leaves (CTC)",
+      "name_hi": "चाय पत्ती",
+      "category": "Beverages",
+      "unit": "250 g",
+      "price_inr": 85,
+      "in_stock": true,
+      "quantity_available": 25,
+      "keywords": ["tea", "chai", "cha", "tea leaves", "ctc tea"]
+    },
+    {
+      "id": "coffee_instant_100g",
+      "name": "Instant Coffee",
+      "name_hi": "इंस्टेंट कॉफ़ी",
+      "category": "Beverages",
+      "unit": "100 g",
+      "price_inr": 120,
+      "in_stock": true,
+      "quantity_available": 10,
+      "keywords": ["coffee", "kaafi", "instant coffee"]
+    },
+    {
+      "id": "biscuits_marie_100g",
+      "name": "Marie Biscuits",
+      "name_hi": "मैरी बिस्किट",
+      "category": "Snacks",
+      "unit": "100 g",
+      "price_inr": 25,
+      "in_stock": true,
+      "quantity_available": 35,
+      "keywords": ["biscuit", "biskut", "marie", "snack", "cookie"]
+    },
+    {
+      "id": "namkeen_mixture_200g",
+      "name": "Mixed Namkeen",
+      "name_hi": "मिक्स नमकीन",
+      "category": "Snacks",
+      "unit": "200 g",
+      "price_inr": 60,
+      "in_stock": true,
+      "quantity_available": 20,
+      "keywords": ["namkeen", "mixture", "snack", "chakna", "farsan"]
+    },
+    {
+      "id": "chips_potato_60g",
+      "name": "Potato Chips",
+      "name_hi": "आलू चिप्स",
+      "category": "Snacks",
+      "unit": "60 g",
+      "price_inr": 20,
+      "in_stock": true,
+      "quantity_available": 50,
+      "keywords": ["chips", "crisps", "potato chips", "snack"]
+    },
+    {
+      "id": "soap_bath_100g",
+      "name": "Bath Soap",
+      "name_hi": "नहाने का साबुन",
+      "category": "Household",
+      "unit": "100 g",
+      "price_inr": 35,
+      "in_stock": true,
+      "quantity_available": 40,
+      "keywords": ["soap", "sabun", "bath soap", "body soap"]
+    },
+    {
+      "id": "detergent_powder_1kg",
+      "name": "Detergent Powder",
+      "name_hi": "डिटर्जेंट पाउडर",
+      "category": "Household",
+      "unit": "1 kg",
+      "price_inr": 90,
+      "in_stock": true,
+      "quantity_available": 22,
+      "keywords": ["detergent", "washing powder", "soap powder", "kapda dhona"]
+    },
+    {
+      "id": "dish_wash_liquid_500ml",
+      "name": "Dish Wash Liquid",
+      "name_hi": "बर्तन धुलाई साबुन",
+      "category": "Household",
+      "unit": "500 ml",
+      "price_inr": 75,
+      "in_stock": true,
+      "quantity_available": 18,
+      "keywords": ["dish wash", "bartan", "liquid soap", "vim", "pril"]
+    },
+    {
+      "id": "turmeric_powder_100g",
+      "name": "Turmeric Powder (Haldi)",
+      "name_hi": "हल्दी पाउडर",
+      "category": "Groceries",
+      "unit": "100 g",
+      "price_inr": 30,
+      "in_stock": true,
+      "quantity_available": 35,
+      "keywords": ["turmeric", "haldi", "spice", "masala"]
+    },
+    {
+      "id": "red_chilli_powder_100g",
+      "name": "Red Chilli Powder",
+      "name_hi": "लाल मिर्च पाउडर",
+      "category": "Groceries",
+      "unit": "100 g",
+      "price_inr": 35,
+      "in_stock": true,
+      "quantity_available": 28,
+      "keywords": ["red chilli", "mirch", "chilli powder", "lal mirch", "spice", "masala"]
+    },
+    {
+      "id": "ghee_500ml",
+      "name": "Pure Ghee",
+      "name_hi": "शुद्ध घी",
+      "category": "Dairy",
+      "unit": "500 ml",
+      "price_inr": 280,
+      "in_stock": false,
+      "quantity_available": 0,
+      "keywords": ["ghee", "clarified butter", "desi ghee", "dairy"]
+    },
+    {
+      "id": "bottled_water_1l",
+      "name": "Packaged Drinking Water",
+      "name_hi": "पैकेज्ड पीने का पानी",
+      "category": "Beverages",
+      "unit": "1 litre",
+      "price_inr": 20,
+      "in_stock": true,
+      "quantity_available": 100,
+      "keywords": ["water", "pani", "mineral water", "bottled water", "drinking water"]
+    }
+  ]
+}

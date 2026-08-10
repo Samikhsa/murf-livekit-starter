@@ -90,6 +90,33 @@ cd frontend
 pnpm install
 ```
 
+### How to Re-Run the Project (Windows / PowerShell)
+
+> **Note**: Always enter the project directory first (`cd murf-livekit-starter`).
+
+#### Separate Terminals (Recommended to view logs):
+- **Terminal 1 — Backend Agent**:
+  ```powershell
+  cd E:\Murf\murf-livekit-starter\backend
+  $env:PATH += ";$env:USERPROFILE\.local\bin"
+  uv run python src/agent.py dev
+  ```
+
+- **Terminal 2 — Frontend UI**:
+  ```powershell
+  cd E:\Murf\murf-livekit-starter\frontend
+  pnpm dev
+  ```
+
+#### One-Click Script:
+```powershell
+cd E:\Murf\murf-livekit-starter; $env:PATH += ";$env:USERPROFILE\.local\bin"; .\start_app.ps1
+```
+
+Then open **http://localhost:3000** in your browser.
+
+---
+
 ### Step 5: Run it
 
 **Option A - All-in-one (from repo root):**
@@ -122,7 +149,47 @@ You should now see the voice agent UI. Click **Start talking**, allow microphone
 
 ---
 
+## Day 5 — Catalogue & Pricing Tools
+
+ShopMitra can now answer real product questions without inventing anything.
+
+### Tools Added
+
+| Tool | When it fires | What it returns |
+|---|---|---|
+| `check_catalogue` | Customer asks about a product, its price, or stock | Up to 5 matching products with name (English + Hindi), price ₹, unit, stock status, and price date |
+| `compute_order_total` | Customer wants to know the cost of multiple items | Line-item breakdown + grand total in ₹ |
+
+### Data Source
+
+> **Local (hand-built dataset)** — `backend/data/catalogue.json`
+>
+> No public Indian grocery API with live stock data is available.
+> The catalogue is a JSON file seeded with ~30 common pan-India grocery items
+> across all ABC Store categories (Groceries, Dairy, Pulses, Grains, Snacks,
+> Beverages, Household). Prices reflect representative retail rates as of the
+> `price_last_updated` date stamped in the file.
+>
+> The agent always speaks this date: _"As of today's data, Basmati Rice is ₹120 per kg."_
+
+### Failure Path
+
+If the catalogue file is missing or unreadable, every tool returns a structured
+error dict. The system prompt instructs the agent to say:
+_"I'm having trouble checking our system right now. Let me connect you to our store staff."_
+It will never go silent or hallucinate a price.
+
+### Extending to a Live API
+
+Replace the internals of `search_products()` in `backend/src/catalogue.py` with
+an HTTP call to a real grocery API (e.g. a government commodity price feed or
+your own inventory system). The tool interface — and the system prompt rules —
+stay identical.
+
+---
+
 ## Deploy
+
 
 Want to deploy this beyond localhost? You'll need to deploy **two services**: the backend agent and the frontend. Both must use the same LiveKit project.
 
