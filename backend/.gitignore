@@ -9,7 +9,8 @@ KMS
 .vscode
 *.egg-info
 .pytest_cache
-.ruff_cache
+*.db
+*.sqlite3
 
 # Claude Code
 .claude/settings.local.json

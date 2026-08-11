@@ -1,0 +1,8 @@
+{
+  "name": "linphone-trunk",
+  "address": "sip.linphone.org",
+  "transport": 3,
+  "numbers": [
+    "sip:snowwwww@sip.linphone.org"
+  ]
+}

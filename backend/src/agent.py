@@ -18,8 +18,13 @@ from livekit.agents import (
     tokenize,
     room_io,
 )
-from livekit.plugins import murf, silero, google, deepgram, noise_cancellation, openai
+from livekit.plugins import murf, silero, deepgram, noise_cancellation, openai
+try:
+    from livekit.plugins import google
+except Exception as exc:
+    google = None
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
+
 
 try:
     from . import database  # when imported as a package (uv run / pytest)
@@ -47,11 +52,18 @@ def get_llm_provider() -> dict[str, str]:
             "model": os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini"),
             "base_url": "https://openrouter.ai/api/v1",
         }
+    if os.getenv("GOOGLE_API_KEY"):
+        return {
+            "provider": "google",
+            "model": os.getenv("GOOGLE_LLM_MODEL", "gemini-1.5-flash"),
+        }
 
     return {
         "provider": "google",
-        "model": os.getenv("GOOGLE_LLM_MODEL", "gemini-2.0-flash"),
+        "model": os.getenv("GOOGLE_LLM_MODEL", "gemini-1.5-flash"),
     }
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -142,9 +154,20 @@ STYLE
 - Suitable for spoken conversation.
 - If the user is silent for several seconds, politely ask if they are still there.
 
-DEFAULT FIRST GREETING (new callers only)
+DEFAULT FIRST GREETING (new inbound callers only)
 "Hello! Welcome to ABC Local Store. I'm ShopMitra, your AI shopping assistant. I can help you find products, check our timings, explain delivery options, and answer your shopping queries. How may I help you today?"
+
+OUTBOUND CALL RULES — DAY 6 MANDATORY OPENING (CRITICAL)
+- If this is an OUTBOUND CALL (indicated in system note):
+  You MUST open the call immediately with the exact 3-part structure in your first two sentences:
+  1. WHO: State clearly who is calling ("This is ShopMitra calling from ABC Local Store...")
+  2. WHY: State clearly why you are calling ("...I'm calling to check if you would like to restock your regular monthly order of [product].")
+  3. OPT-OUT: State clearly how to make calls stop ("...If you prefer not to receive these restock call reminders, just say opt out or let me know anytime.")
+- If the caller says "opt out", "stop calling me", "don't call again", or asks to stop reminders —
+  IMMEDIATELY call the `opt_out_restock_calls` tool and confirm:
+  "Understood! I have updated your preferences and disabled restock call reminders."
 """
+
 
 
 # ---------------------------------------------------------------------------
@@ -264,9 +287,32 @@ class Assistant(Agent):
             "message": "No record found for this caller — nothing to delete.",
         }
 
+    @function_tool
+    async def opt_out_restock_calls(
+        self,
+        context: RunContext,
+        user_id: str,
+    ):
+        """
+        Opt out the caller from receiving future outbound restock call reminders.
+
+        Call this immediately when the caller requests to opt out or stop calls.
+        After calling this tool, confirm to the caller that restock calls are disabled.
+
+        Args:
+            user_id: The unique identifier for the caller.
+        """
+        logger.info("opt_out_restock_calls called for user_id=%s", user_id)
+        database.set_user_opt_out(user_id, True)
+        return {
+            "status": "opted_out",
+            "message": "User successfully opted out of restock call reminders.",
+        }
+
     # ------------------------------------------------------------------
     # Day 5 — Catalogue & pricing tools
     # ------------------------------------------------------------------
+
 
     @function_tool
     async def check_catalogue(
@@ -432,12 +478,23 @@ async def my_agent(ctx: JobContext):
     _load_backend_env()
     provider = get_llm_provider()
 
-    # Derive a stable user ID before connecting so we can pass it to the agent
-    # NOTE: remote_participants may be empty before connect(); we derive again
-    # inside the session after the join event if needed. For the Day 4 demo
-    # we use the room name which is stable across reconnects.
-    user_id = ctx.room.name or "demo_user"
-    logger.info("Session user_id derived as: %s", user_id)
+    # Parse room metadata or name to determine if this is an outbound call
+    room_metadata = {}
+    if ctx.room.metadata:
+        try:
+            room_metadata = json.loads(ctx.room.metadata)
+        except Exception:  # noqa: BLE001
+            pass
+
+    is_outbound = (
+        room_metadata.get("call_type") == "outbound"
+        or ctx.room.name.startswith("outbound")
+    )
+    user_id = room_metadata.get("user_id") or ctx.room.name or "demo_user"
+    customer_name = room_metadata.get("customer_name", "Ramesh")
+    restock_item = room_metadata.get("restock_item", "Basmati Rice 5kg & Wheat Flour 10kg")
+
+    logger.info("Session user_id derived as: %s (outbound=%s)", user_id, is_outbound)
 
     if provider["provider"] == "openrouter":
         logger.info("Using OpenRouter LLM provider with model %s", provider["model"])
@@ -484,14 +541,27 @@ async def my_agent(ctx: JobContext):
 
     await ctx.connect()
 
-    # Inject the user_id into the initial chat context so the agent knows
-    # which ID to pass to lookup_caller on its first turn.
-    initial_message = (
-        f"[SYSTEM NOTE — not spoken aloud]\n"
-        f"The caller's user_id for this session is: {user_id!r}.\n"
-        f"Your very first action must be to call the `lookup_caller` tool with this user_id.\n"
-        f"Do not greet the caller until you have the result."
-    )
+    if is_outbound:
+        initial_message = (
+            f"[SYSTEM NOTE — not spoken aloud]\n"
+            f"This is an OUTBOUND RESTOCK CALL to {customer_name!r}.\n"
+            f"The caller's user_id for this session is: {user_id!r}.\n"
+            f"Target Restock Product: {restock_item!r}.\n\n"
+            f"DAY 6 MANDATORY OPENING REQUIREMENT:\n"
+            f"In your very first turn, you MUST open the call with these 3 exact points in your first 2 sentences:\n"
+            f"1. WHO: Say 'Hello {customer_name}! This is ShopMitra calling from ABC Local Store...'\n"
+            f"2. WHY: Say '...I'm calling to check if you would like to restock your monthly supply of {restock_item}.'\n"
+            f"3. OPT-OUT: Say 'If you prefer not to receive these restock call reminders, just say opt out or let me know anytime.'\n\n"
+            f"Begin speaking immediately now."
+        )
+    else:
+        # Inbound call flow
+        initial_message = (
+            f"[SYSTEM NOTE — not spoken aloud]\n"
+            f"The caller's user_id for this session is: {user_id!r}.\n"
+            f"Your very first action must be to call the `lookup_caller` tool with this user_id.\n"
+            f"Do not greet the caller until you have the result."
+        )
 
     await session.start(
         agent=Assistant(),
@@ -510,6 +580,7 @@ async def my_agent(ctx: JobContext):
 
     # Trigger the first agent turn with the session injection
     await session.generate_reply(instructions=initial_message)
+
 
 
 if __name__ == "__main__":

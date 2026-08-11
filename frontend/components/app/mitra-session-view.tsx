@@ -39,6 +39,15 @@ export function MitraSessionView({ className }: { className?: string }) {
   const recognitionRef = useRef<any>(null);
   const draftRef = useRef(draft);
 
+  // Day 6 Outbound Call State
+  const [activeTab, setActiveTab] = useState<'inbound' | 'outbound'>('outbound');
+  const [customerName, setCustomerName] = useState('Ramesh Kumar');
+  const [phoneNumber, setPhoneNumber] = useState('+91 98765 43210');
+  const [restockItem, setRestockItem] = useState('Basmati Rice 5kg & Wheat Flour 10kg');
+  const [simulateOutcome, setSimulateOutcome] = useState<'CONNECTED' | 'NO_ANSWER' | 'BUSY' | 'VOICEMAIL' | 'IMMEDIATE_HANGUP'>('CONNECTED');
+  const [outboundLog, setOutboundLog] = useState<any | null>(null);
+  const [isCallingOutbound, setIsCallingOutbound] = useState(false);
+
   const scrolledToBottomRef = useRef(false);
   const chatRef = useRef<HTMLDivElement>(null);
 
@@ -106,9 +115,9 @@ export function MitraSessionView({ className }: { className?: string }) {
 
   const quickReplies = useMemo(
     () => [
-      { label: '📦 Track my order', value: 'Track my order' },
-      { label: '🏷️ Today\'s offers', value: "What are today's offers?" },
-      { label: '↩️ Return an item', value: 'I want to return an item' },
+      { label: '📦 Restock Basmati Rice', value: 'I want to restock 5kg Basmati Rice' },
+      { label: '🛑 Opt Out of Calls', value: 'Please opt out and stop calling me' },
+      { label: '🏷️ Check Catalogue', value: 'Check price for Wheat Flour' },
       { label: '🧑‍💼 Talk to a human', value: 'Talk to a human agent' },
     ],
     []
@@ -125,6 +134,29 @@ export function MitraSessionView({ className }: { className?: string }) {
       console.error(error);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleTriggerOutbound = async () => {
+    setIsCallingOutbound(true);
+    setOutboundLog(null);
+    try {
+      const res = await fetch('/api/outbound', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_name: customerName,
+          phone_number: phoneNumber,
+          restock_item: restockItem,
+          simulate_outcome: simulateOutcome,
+        }),
+      });
+      const data = await res.json();
+      setOutboundLog(data);
+    } catch (err: any) {
+      setOutboundLog({ error: err.message || 'Call failed' });
+    } finally {
+      setIsCallingOutbound(false);
     }
   };
 
@@ -155,9 +187,9 @@ export function MitraSessionView({ className }: { className?: string }) {
               ))}
             </div>
             <div className="shop-row">
-              <div className="shop-icon">🛍️</div>
+              <div className="shop-icon">📲</div>
               <div style={{ flex: 1 }}>
-                <div className="shop-name">ABC Shop Mitra</div>
+                <div className="shop-name">ABC ShopMitra</div>
                 <div className="shop-tag">
                   <span className="dot" /> <span>{statusText}</span>
                 </div>
@@ -180,86 +212,204 @@ export function MitraSessionView({ className }: { className?: string }) {
                 {voiceRepliesOn ? '🔊' : '🔇'}
               </button>
             </div>
-          </div>
 
-          <div className="chat" ref={chatRef}>
-            {messages.length === 0 ? (
-              <div className="msg bot">
-                <div className="msg-label">Mitra</div>
-                Namaste! 🙏 I'm Mitra, your assistant for ABC Shop. Ask me about orders, products, returns, or anything else — I'm here to help.
-              </div>
-            ) : null}
-            {messages.map((item) => {
-              const isUser = item.from?.isLocal === true;
-              return (
-                <div key={item.id} className={`msg ${isUser ? 'user' : 'bot'}`}>
-                  {!isUser && <div className="msg-label">Mitra</div>}
-                  {item.message}
-                </div>
-              );
-            })}
-            {agentState === 'thinking' && (
-              <div className="typing">
-                <span />
-                <span />
-                <span />
-              </div>
-            )}
-          </div>
-
-          <div className="chips">
-            {quickReplies.map((reply) => (
+            {/* Mode Switcher Tabs */}
+            <div className="tab-bar">
               <button
-                key={reply.value}
                 type="button"
-                className="chip"
-                onClick={() => void handleSend(reply.value)}
+                className={`tab-btn ${activeTab === 'outbound' ? 'active' : ''}`}
+                onClick={() => setActiveTab('outbound')}
               >
-                {reply.label}
+                📞 Outbound Restock (Day 6)
               </button>
-            ))}
-          </div>
-
-          <div className={`listening-banner ${isListening ? 'active' : ''}`}>
-            <div className="wave">
-              <span />
-              <span />
-              <span />
-              <span />
-              <span />
+              <button
+                type="button"
+                className={`tab-btn ${activeTab === 'inbound' ? 'active' : ''}`}
+                onClick={() => setActiveTab('inbound')}
+              >
+                💬 Inbound Chat
+              </button>
             </div>
-            <span>{listeningText}</span>
           </div>
 
-          <div className="counter">
-            <button
-              type="button"
-              className={`mic-btn ${isListening ? 'listening' : ''}`}
-              onClick={handleMicClick}
-              aria-label="Speak to Mitra"
-              title="Speak to Mitra"
-            >
-              🎤
-            </button>
-            <input
-              type="text"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Type or tap the mic to talk..."
-              autoComplete="off"
-            />
-            <button
-              type="button"
-              className="send-btn"
-              onClick={() => void handleSend()}
-              aria-label="Send message"
-              disabled={!draft.trim() || !isConnected || isSending}
-            >
-              ➤
-            </button>
-          </div>
+          {activeTab === 'outbound' ? (
+            <div className="outbound-panel">
+              <div className="panel-header">
+                <span className="badge">DAY 6 OUTBOUND CALL</span>
+                <h3>Proactive Restock Nudge</h3>
+                <p>ShopMitra calls customers when their regular monthly supply is due for reorder.</p>
+              </div>
+
+              <div className="form-group">
+                <label>Customer Name</label>
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="e.g. Ramesh Kumar"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Phone Number</label>
+                <input
+                  type="text"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="+91 98765 43210"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Restock Item (Order Rhythm)</label>
+                <input
+                  type="text"
+                  value={restockItem}
+                  onChange={(e) => setRestockItem(e.target.value)}
+                  placeholder="e.g. Basmati Rice 5kg"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Telephony Outcome Handler</label>
+                <select
+                  value={simulateOutcome}
+                  onChange={(e: any) => setSimulateOutcome(e.target.value)}
+                >
+                  <option value="CONNECTED">CONNECTED (Customer Answers)</option>
+                  <option value="NO_ANSWER">NO ANSWER (Retry in 30 mins)</option>
+                  <option value="BUSY">BUSY (Retry in 15 mins)</option>
+                  <option value="VOICEMAIL">VOICEMAIL (Leave Voice Note)</option>
+                  <option value="IMMEDIATE_HANGUP">IMMEDIATE HANGUP (Do Not Call Today)</option>
+                </select>
+              </div>
+
+              {/* Step 4 Mandatory Opening Rule Card */}
+              <div className="opening-rule-card">
+                <div className="rule-title">⚠️ STEP 4 MANDATORY OPENING RULE</div>
+                <div className="rule-step"><strong>1. Who:</strong> "Hello {customerName}! This is ShopMitra from ABC Local Store..."</div>
+                <div className="rule-step"><strong>2. Why:</strong> "...calling regarding your monthly restock for {restockItem}."</div>
+                <div className="rule-step"><strong>3. Opt-out:</strong> "...If you'd like to stop restock call reminders, just say opt out or let me know."</div>
+              </div>
+
+              <button
+                type="button"
+                className="dispatch-btn"
+                onClick={handleTriggerOutbound}
+                disabled={isCallingOutbound}
+              >
+                {isCallingOutbound ? '📞 Placing Outbound Call...' : '📲 Trigger Outbound Call'}
+              </button>
+
+              {outboundLog && (
+                <div className="outbound-result">
+                  <div className="result-header">
+                    <span>CALL DISPATCH LOG</span>
+                    <span className={`status-pill ${outboundLog.call_metadata?.simulate_outcome}`}>
+                      {outboundLog.call_metadata?.simulate_outcome || 'SENT'}
+                    </span>
+                  </div>
+                  <div className="result-detail">
+                    <strong>Room Name:</strong> {outboundLog.roomName}<br />
+                    <strong>Customer ID:</strong> {outboundLog.call_metadata?.user_id}<br />
+                    <strong>Mandatory Intro:</strong> "{outboundLog.mandatory_opening?.who}"
+                  </div>
+                  {simulateOutcome !== 'CONNECTED' && (
+                    <div className="retry-policy-box">
+                      <strong>Outcome Rule Applied:</strong> {
+                        simulateOutcome === 'NO_ANSWER' ? 'Ring timeout -> Retry 1 scheduled in 30 mins (max 2 retries).' :
+                        simulateOutcome === 'BUSY' ? 'Line busy -> Retry 1 scheduled in 15 mins (max 3 retries).' :
+                        simulateOutcome === 'VOICEMAIL' ? 'Voicemail detected -> Delivered restock audio note. No further retries.' :
+                        'User hung up <5s -> Marked Do-Not-Call today to respect privacy.'
+                      }
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="chat" ref={chatRef}>
+                {messages.length === 0 ? (
+                  <div className="msg bot">
+                    <div className="msg-label">Mitra</div>
+                    Namaste! 🙏 I'm Mitra, your assistant for ABC Shop. Ask me about orders, products, returns, or opt-out options.
+                  </div>
+                ) : null}
+                {messages.map((item) => {
+                  const isUser = item.from?.isLocal === true;
+                  return (
+                    <div key={item.id} className={`msg ${isUser ? 'user' : 'bot'}`}>
+                      {!isUser && <div className="msg-label">Mitra</div>}
+                      {item.message}
+                    </div>
+                  );
+                })}
+                {agentState === 'thinking' && (
+                  <div className="typing">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                )}
+              </div>
+
+              <div className="chips">
+                {quickReplies.map((reply) => (
+                  <button
+                    key={reply.value}
+                    type="button"
+                    className="chip"
+                    onClick={() => void handleSend(reply.value)}
+                  >
+                    {reply.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className={`listening-banner ${isListening ? 'active' : ''}`}>
+                <div className="wave">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <span>{listeningText}</span>
+              </div>
+
+              <div className="counter">
+                <button
+                  type="button"
+                  className={`mic-btn ${isListening ? 'listening' : ''}`}
+                  onClick={handleMicClick}
+                  aria-label="Speak to Mitra"
+                  title="Speak to Mitra"
+                >
+                  🎤
+                </button>
+                <input
+                  type="text"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  placeholder="Type or tap the mic to talk..."
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  className="send-btn"
+                  onClick={() => void handleSend()}
+                  aria-label="Send message"
+                  disabled={!draft.trim() || !isConnected || isSending}
+                >
+                  ➤
+                </button>
+              </div>
+            </>
+          )}
+
           <div className="footnote">
-            ABC Shop Mitra can make mistakes. Please double-check important info.
+            ABC ShopMitra • Day 6 Outbound Call Engine • Powered by Murf Falcon TTS
           </div>
         </div>
         <style jsx>{`
@@ -278,8 +428,8 @@ export function MitraSessionView({ className }: { className?: string }) {
 
           .phone {
             width: 100%;
-            max-width: 430px;
-            height: min(760px, 92vh);
+            max-width: 440px;
+            height: min(800px, 94vh);
             background: #fffdf8;
             border-radius: 22px;
             overflow: hidden;
@@ -291,24 +441,16 @@ export function MitraSessionView({ className }: { className?: string }) {
 
           .signboard {
             background: linear-gradient(180deg, #7a1f2b 0%, #611722 100%);
-            padding: 22px 20px 26px;
+            padding: 18px 18px 14px;
             position: relative;
             color: #fbf3e7;
-            border-bottom: 6px solid #f2a93b;
-          }
-
-          .signboard::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 14px);
-            pointer-events: none;
+            border-bottom: 5px solid #f2a93b;
           }
 
           .bulbs {
             display: flex;
             justify-content: space-between;
-            padding: 0 4px 12px;
+            padding: 0 4px 8px;
           }
 
           .bulb {
@@ -326,29 +468,25 @@ export function MitraSessionView({ className }: { className?: string }) {
           }
 
           .shop-icon {
-            width: 46px;
-            height: 46px;
+            width: 42px;
+            height: 42px;
             border-radius: 12px;
             background: #f2a93b;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 22px;
+            font-size: 20px;
             flex-shrink: 0;
-            box-shadow: inset 0 -3px 0 rgba(0,0,0,0.15);
           }
 
           .shop-name {
-            font-family: 'Baloo 2', sans-serif;
             font-weight: 800;
-            font-size: 23px;
-            letter-spacing: 0.3px;
+            font-size: 21px;
             line-height: 1.1;
-            text-shadow: 0 2px 0 rgba(0,0,0,0.2);
           }
 
           .shop-tag {
-            font-size: 12.5px;
+            font-size: 12px;
             opacity: 0.85;
             margin-top: 2px;
             display: flex;
@@ -361,7 +499,178 @@ export function MitraSessionView({ className }: { className?: string }) {
             height: 7px;
             border-radius: 50%;
             background: #6fe0a0;
-            box-shadow: 0 0 0 3px rgba(111,224,160,0.25);
+          }
+
+          .voice-toggle {
+            background: rgba(255,255,255,0.15);
+            border: none;
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+          }
+
+          .tab-bar {
+            display: flex;
+            gap: 6px;
+            margin-top: 14px;
+            background: rgba(0,0,0,0.2);
+            padding: 3px;
+            border-radius: 10px;
+          }
+
+          .tab-btn {
+            flex: 1;
+            padding: 7px 10px;
+            font-size: 11.5px;
+            font-weight: 600;
+            border: none;
+            background: transparent;
+            color: rgba(255,255,255,0.7);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+          }
+
+          .tab-btn.active {
+            background: #f2a93b;
+            color: #2b2118;
+          }
+
+          /* Outbound Panel */
+          .outbound-panel {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: #fbf3e7;
+          }
+
+          .panel-header h3 {
+            margin: 4px 0 2px;
+            font-size: 17px;
+            color: #7a1f2b;
+          }
+
+          .panel-header p {
+            font-size: 12px;
+            color: #666;
+            margin: 0;
+          }
+
+          .badge {
+            background: #1c6e63;
+            color: #fff;
+            font-size: 9.5px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 6px;
+            letter-spacing: 0.5px;
+          }
+
+          .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
+
+          .form-group label {
+            font-size: 11.5px;
+            font-weight: 600;
+            color: #444;
+          }
+
+          .form-group input, .form-group select {
+            padding: 8px 12px;
+            border: 1px solid rgba(43,33,24,0.15);
+            border-radius: 8px;
+            font-size: 13px;
+            background: #fff;
+            color: #2b2118;
+          }
+
+          .opening-rule-card {
+            background: #fff8eb;
+            border: 1px solid #f2a93b;
+            border-radius: 10px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
+
+          .rule-title {
+            font-size: 10.5px;
+            font-weight: 800;
+            color: #7a1f2b;
+            letter-spacing: 0.4px;
+          }
+
+          .rule-step {
+            font-size: 11.5px;
+            color: #333;
+            line-height: 1.35;
+          }
+
+          .dispatch-btn {
+            background: #7a1f2b;
+            color: #fff;
+            border: none;
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            margin-top: 4px;
+          }
+
+          .dispatch-btn:hover {
+            background: #611722;
+          }
+
+          .outbound-result {
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 10px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 12px;
+          }
+
+          .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 700;
+            font-size: 11px;
+            color: #555;
+          }
+
+          .status-pill {
+            background: #e2f5ec;
+            color: #1c6e63;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+          }
+
+          .status-pill.NO_ANSWER, .status-pill.BUSY {
+            background: #fff0f0;
+            color: #c0392b;
+          }
+
+          .retry-policy-box {
+            background: #eef6f5;
+            border-left: 3px solid #1c6e63;
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #1c6e63;
           }
 
           .chat {
@@ -374,33 +683,12 @@ export function MitraSessionView({ className }: { className?: string }) {
             background: linear-gradient(180deg, rgba(122,31,43,0.02), transparent 120px), #fbf3e7;
           }
 
-          .chat::-webkit-scrollbar {
-            width: 6px;
-          }
-
-          .chat::-webkit-scrollbar-thumb {
-            background: rgba(122,31,43,0.15);
-            border-radius: 10px;
-          }
-
           .msg {
             max-width: 82%;
             padding: 11px 14px;
             border-radius: 16px;
             font-size: 14.5px;
             line-height: 1.45;
-            animation: rise 0.25s ease;
-          }
-
-          @keyframes rise {
-            from {
-              opacity: 0;
-              transform: translateY(6px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
           }
 
           .msg.bot {
@@ -408,7 +696,6 @@ export function MitraSessionView({ className }: { className?: string }) {
             background: #fffdf8;
             border: 1px solid rgba(43,33,24,0.08);
             border-bottom-left-radius: 4px;
-            box-shadow: 0 2px 6px rgba(43,33,24,0.05);
           }
 
           .msg.user {
@@ -427,267 +714,83 @@ export function MitraSessionView({ className }: { className?: string }) {
             opacity: 0.55;
           }
 
-          .typing {
-            align-self: flex-start;
-            display: flex;
-            gap: 4px;
-            padding: 12px 14px;
-            background: #fffdf8;
-            border: 1px solid rgba(43,33,24,0.08);
-            border-radius: 16px;
-            border-bottom-left-radius: 4px;
-          }
-
-          .typing span {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: #7a1f2b;
-            opacity: 0.4;
-            animation: bounce 1.1s infinite ease-in-out;
-          }
-
-          .typing span:nth-child(2) {
-            animation-delay: 0.15s;
-          }
-
-          .typing span:nth-child(3) {
-            animation-delay: 0.3s;
-          }
-
-          @keyframes bounce {
-            0%, 60%, 100% {
-              transform: translateY(0);
-              opacity: 0.4;
-            }
-            30% {
-              transform: translateY(-4px);
-              opacity: 0.9;
-            }
-          }
-
           .chips {
             display: flex;
             gap: 8px;
-            padding: 2px 16px 12px;
             overflow-x: auto;
-            flex-wrap: nowrap;
+            padding: 6px 14px;
             background: #fbf3e7;
           }
 
-          .chips::-webkit-scrollbar {
-            display: none;
-          }
-
           .chip {
-            flex-shrink: 0;
-            border: 1.5px solid #f2a93b;
-            color: #7a1f2b;
-            background: #fff8ea;
-            padding: 7px 13px;
-            border-radius: 999px;
-            font-size: 12.5px;
-            font-weight: 500;
-            cursor: pointer;
             white-space: nowrap;
-            transition: all 0.15s ease;
-          }
-
-          .chip:hover {
-            background: #f2a93b;
-            color: #7a1f2b;
-            transform: translateY(-1px);
+            padding: 6px 12px;
+            border-radius: 16px;
+            background: #fffdf8;
+            border: 1px solid rgba(43,33,24,0.12);
+            font-size: 12px;
+            color: #2b2118;
+            cursor: pointer;
           }
 
           .counter {
+            padding: 10px 14px;
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 12px 14px;
+            gap: 8px;
             background: #fffdf8;
-            border-top: 3px solid #f2a93b;
+            border-top: 1px solid rgba(43,33,24,0.08);
           }
 
           .counter input {
             flex: 1;
-            border: 1.5px solid rgba(43,33,24,0.15);
-            background: #fbf3e7;
-            border-radius: 24px;
-            padding: 11px 16px;
-            font-family: 'Poppins', sans-serif;
-            font-size: 14px;
-            color: #2b2118;
+            border: 1px solid rgba(43,33,24,0.15);
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 13.5px;
             outline: none;
-            transition: border-color 0.15s ease;
           }
 
-          .counter input:focus {
-            border-color: #1c6e63;
-          }
-
-          .send-btn {
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            border: none;
-            background: #c0392b;
-            color: #fff;
-            font-size: 17px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            transition: transform 0.12s ease, background 0.12s ease;
-          }
-
-          .send-btn:hover {
-            background: #7a1f2b;
-            transform: scale(1.05);
-          }
-
-          .send-btn:active {
-            transform: scale(0.94);
-          }
-
-          .send-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-          }
-
-          .voice-toggle {
+          .mic-btn, .send-btn {
             width: 36px;
             height: 36px;
             border-radius: 50%;
-            border: 1.5px solid rgba(255,255,255,0.35);
-            background: rgba(255,255,255,0.08);
-            color: #fbf3e7;
-            font-size: 15px;
-            cursor: pointer;
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.15s ease;
-          }
-
-          .voice-toggle:hover {
-            background: rgba(255,255,255,0.18);
-          }
-
-          .voice-toggle.muted {
-            opacity: 0.5;
-          }
-
-          .mic-btn {
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
             border: none;
-            background: #1c6e63;
+            background: #7a1f2b;
             color: #fff;
-            font-size: 16px;
-            cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            flex-shrink: 0;
-            transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.15s ease;
-            position: relative;
-          }
-
-          .mic-btn:hover {
-            transform: scale(1.05);
-          }
-
-          .mic-btn:active {
-            transform: scale(0.94);
+            cursor: pointer;
           }
 
           .mic-btn.listening {
-            background: #c0392b;
-            animation: pulse-ring 1.4s infinite;
+            background: #1c6e63;
+            animation: pulse 1.2s infinite;
           }
 
-          @keyframes pulse-ring {
-            0% {
-              box-shadow: 0 0 0 0 rgba(192,57,43,0.5);
-            }
-            70% {
-              box-shadow: 0 0 0 12px rgba(192,57,43,0);
-            }
-            100% {
-              box-shadow: 0 0 0 0 rgba(192,57,43,0);
-            }
+          .footnote {
+            text-align: center;
+            font-size: 10px;
+            color: #888;
+            padding: 6px;
+            background: #f4ea6f;
+            color: #2b2118;
+            font-weight: 600;
           }
 
           .listening-banner {
             display: none;
             align-items: center;
-            justify-content: center;
-            gap: 10px;
-            padding: 8px 16px;
-            background: linear-gradient(90deg, rgba(192,57,43,0.08), rgba(242,169,59,0.12));
-            border-top: 1px solid rgba(122,31,43,0.08);
-            font-size: 12.5px;
-            color: #7a1f2b;
-            font-weight: 500;
+            gap: 8px;
+            padding: 6px 14px;
+            background: #1c6e63;
+            color: #fff;
+            font-size: 12px;
           }
 
           .listening-banner.active {
             display: flex;
-          }
-
-          .wave {
-            display: flex;
-            align-items: center;
-            gap: 2px;
-            height: 16px;
-          }
-
-          .wave span {
-            width: 3px;
-            border-radius: 2px;
-            background: #c0392b;
-            animation: wave 0.9s infinite ease-in-out;
-          }
-
-          .wave span:nth-child(1) {
-            height: 6px;
-            animation-delay: 0s;
-          }
-          .wave span:nth-child(2) {
-            height: 14px;
-            animation-delay: 0.1s;
-          }
-          .wave span:nth-child(3) {
-            height: 9px;
-            animation-delay: 0.2s;
-          }
-          .wave span:nth-child(4) {
-            height: 16px;
-            animation-delay: 0.3s;
-          }
-          .wave span:nth-child(5) {
-            height: 7px;
-            animation-delay: 0.4s;
-          }
-
-          @keyframes wave {
-            0%, 100% {
-              transform: scaleY(0.4);
-            }
-            50% {
-              transform: scaleY(1);
-            }
-          }
-
-          .footnote {
-            text-align: center;
-            font-size: 10.5px;
-            color: rgba(43,33,24,0.4);
-            padding: 6px 0 10px;
-            background: #fffdf8;
           }
         `}</style>
       </div>

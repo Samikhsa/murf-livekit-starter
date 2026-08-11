@@ -1,0 +1,10 @@
+{
+  "name": "ShopMitra Twilio Outbound Trunk",
+  "address": "outbound.pstn.twilio.com",
+  "numbers": [
+    "+1XXXXXXXXXX"
+  ],
+  "auth_username": "YOUR_TWILIO_API_KEY_SID",
+  "auth_password": "YOUR_TWILIO_API_KEY_SECRET",
+  "transport": 0
+}
