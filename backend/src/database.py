@@ -10,6 +10,13 @@ Public API
 get_user(user_id: str) -> dict | None
 upsert_user(user_id, name, *, language_preference, facts) -> None
 delete_user(user_id: str) -> bool          # "forget me" (advanced)
+
+# Day 7 — Human Escalation
+create_escalation(...) -> dict              # create a new escalation ticket
+get_escalation(ref_id: str) -> dict | None
+list_escalations(status, limit) -> list[dict]
+update_escalation_status(ref_id, status) -> dict | None
+find_open_escalation(user_id, reason_type) -> dict | None
 """
 
 import json
@@ -53,7 +60,7 @@ def _get_conn() -> sqlite3.Connection:
 
 
 def _create_tables(conn: sqlite3.Connection) -> None:
-    """Create the users and outbound_calls tables if they do not exist."""
+    """Create the users, outbound_calls, and escalations tables if they do not exist."""
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -83,8 +90,27 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # Day 7 — Human Escalation tickets
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS escalations (
+            ref_id           TEXT PRIMARY KEY,   -- e.g. ESC-20260812-0001
+            user_id          TEXT NOT NULL,
+            caller_name      TEXT NOT NULL,
+            reason_type      TEXT NOT NULL,      -- payment_dispute | order_dispute
+            summary          TEXT NOT NULL,      -- short PII-scrubbed human-readable summary
+            urgency          TEXT NOT NULL,      -- low | medium | high | emergency
+            language         TEXT DEFAULT 'en',
+            follow_up_method TEXT DEFAULT 'call', -- call | whatsapp | sms
+            agent_checked    TEXT DEFAULT '',    -- what the agent already verified
+            status           TEXT DEFAULT 'open', -- open | in_progress | resolved
+            created_at       TEXT NOT NULL,
+            updated_at       TEXT NOT NULL
+        )
+        """
+    )
     conn.commit()
-    logger.info("Database schema ready for inbound and outbound calls.")
+    logger.info("Database schema ready for inbound calls, outbound calls, and escalations.")
 
 
 
@@ -310,3 +336,145 @@ def list_outbound_calls(limit: int = 20) -> list[dict]:
         rows = cur.fetchall()
     return [dict(r) for r in rows]
 
+
+# ---------------------------------------------------------------------------
+# Day 7 — Human Escalation API
+# ---------------------------------------------------------------------------
+
+import re as _re
+from datetime import date as _date
+
+# Patterns to scrub from summaries before saving / sending
+_PII_PATTERNS = [
+    (_re.compile(r'\b\d{10,13}\b'), '<phone>'),                             # phone numbers
+    (_re.compile(r'(?i)\bOTP\s*[:\-]?\s*\d+\b'), '<otp-redacted>'),        # OTP with digits
+    (_re.compile(r'\b\d{4,6}\b(?=\s*(otp|pin|cvv))', _re.I), '<redacted>'), # digits before OTP/PIN
+    (_re.compile(r'\b[A-Z]{2}\d{10,14}\b'), '<tracking-id>'),               # tracking/order codes
+]
+
+
+def _scrub_pii(text: str) -> str:
+    """Remove common PII patterns from a text string before storing / sending."""
+    for pattern, replacement in _PII_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text.strip()
+
+
+def _generate_ref_id() -> str:
+    """
+    Generate a sequential, date-stamped reference ID like ESC-20260812-0001.
+    Must be called while NOT holding _lock (it acquires it internally).
+    """
+    today = _date.today().strftime("%Y%m%d")
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute(
+            "SELECT COUNT(*) FROM escalations WHERE ref_id LIKE ?",
+            (f"ESC-{today}-%",)
+        )
+        count = cur.fetchone()[0]
+    seq = count + 1
+    return f"ESC-{today}-{seq:04d}"
+
+
+def create_escalation(
+    user_id: str,
+    caller_name: str,
+    reason_type: str,
+    summary: str,
+    urgency: str = "medium",
+    language: str = "en",
+    follow_up_method: str = "call",
+    agent_checked: str = "",
+) -> dict:
+    """
+    Create a new human-help escalation ticket.
+
+    Automatically scrubs PII from summary and agent_checked before saving.
+    Returns the full ticket dict including the generated ref_id.
+    """
+    ref_id = _generate_ref_id()
+    now = datetime.now(timezone.utc).isoformat()
+    clean_summary = _scrub_pii(summary)
+    clean_agent_checked = _scrub_pii(agent_checked)
+
+    with _lock:
+        conn = _get_conn()
+        conn.execute(
+            """
+            INSERT INTO escalations
+            (ref_id, user_id, caller_name, reason_type, summary, urgency,
+             language, follow_up_method, agent_checked, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+            """,
+            (
+                ref_id, user_id, caller_name, reason_type, clean_summary, urgency,
+                language, follow_up_method, clean_agent_checked, now, now,
+            ),
+        )
+        conn.commit()
+    logger.info(
+        "Escalation created: ref_id=%s user_id=%s reason=%s urgency=%s",
+        ref_id, user_id, reason_type, urgency,
+    )
+    return get_escalation(ref_id)  # type: ignore[return-value]
+
+
+def get_escalation(ref_id: str) -> dict | None:
+    """Fetch a single escalation ticket by ref_id."""
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute("SELECT * FROM escalations WHERE ref_id = ?", (ref_id,))
+        row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def list_escalations(status: str | None = None, limit: int = 50) -> list[dict]:
+    """Fetch escalation tickets, optionally filtered by status, newest first."""
+    with _lock:
+        conn = _get_conn()
+        if status:
+            cur = conn.execute(
+                "SELECT * FROM escalations WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+                (status, limit),
+            )
+        else:
+            cur = conn.execute(
+                "SELECT * FROM escalations ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            )
+        rows = cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_escalation_status(ref_id: str, status: str) -> dict | None:
+    """Update the status of an escalation ticket (open / in_progress / resolved)."""
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock:
+        conn = _get_conn()
+        conn.execute(
+            "UPDATE escalations SET status = ?, updated_at = ? WHERE ref_id = ?",
+            (status, now, ref_id),
+        )
+        conn.commit()
+    logger.info("Escalation status updated: ref_id=%s status=%s", ref_id, status)
+    return get_escalation(ref_id)
+
+
+def find_open_escalation(user_id: str, reason_type: str) -> dict | None:
+    """
+    Find an already-open escalation for the same user and reason type.
+    Used to prevent duplicate tickets from the same caller.
+    """
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute(
+            """
+            SELECT * FROM escalations
+            WHERE user_id = ? AND reason_type = ? AND status = 'open'
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (user_id, reason_type),
+        )
+        row = cur.fetchone()
+    return dict(row) if row else None

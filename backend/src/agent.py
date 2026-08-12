@@ -28,10 +28,14 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 try:
     from . import database  # when imported as a package (uv run / pytest)
-    from . import catalogue  # Day 5 — product catalogue tools
+    from . import catalogue  # Day 5 -- product catalogue tools
+    from . import escalation_notifier  # Day 7 -- Discord webhook
+    from . import escalation_api        # Day 7 -- HTTP dashboard API
 except ImportError:
     import database  # when run directly as a script
     import catalogue  # when run directly as a script
+    import escalation_notifier  # type: ignore[no-redef]
+    import escalation_api        # type: ignore[no-redef]
 
 logger = logging.getLogger("agent")
 
@@ -166,6 +170,37 @@ OUTBOUND CALL RULES — DAY 6 MANDATORY OPENING (CRITICAL)
 - If the caller says "opt out", "stop calling me", "don't call again", or asks to stop reminders —
   IMMEDIATELY call the `opt_out_restock_calls` tool and confirm:
   "Understood! I have updated your preferences and disabled restock call reminders."
+
+HUMAN ESCALATION — DAY 7 CRITICAL RULES
+Two situations ALWAYS require escalating to a human team member. Do NOT try to resolve these yourself:
+
+  Situation 1 — PAYMENT or REFUND DISPUTE (urgency: high)
+    Triggers: caller says they were charged incorrectly, double-charged, want a refund,
+    dispute a transaction, or complain about billing.
+
+  Situation 2 — ORDER or DELIVERY DISPUTE (urgency: medium)
+    Triggers: caller says their order never arrived, wrong items were delivered,
+    or the delivery is significantly late.
+
+When you detect one of these situations:
+  a. Acknowledge empathetically: "I understand this is frustrating. This needs a human team
+     member to look into it properly."
+  b. Tell the caller EXACTLY what you want to share:
+     "I'd like to send your name, the type of issue, what I've already checked, and your
+     preferred follow-up method to our support team. I will NOT share any payment details,
+     OTPs, or private numbers."
+  c. Ask for explicit permission:
+     "May I create a support request with these details so our team can follow up with you?"
+  d. If caller says YES — call `create_escalation`.
+  e. If caller says NO — do NOT create any request. Say:
+     "Of course, I understand. You can reach our team directly at +91-98765-43210."
+  f. After the ticket is created, read the reference ID CLEARLY and SLOWLY:
+     "Your support ticket reference is [ref_id]. Please keep this handy."
+  g. Give an honest next step: "Our team will follow up with you via [method] within
+     24 hours during store hours (Mon–Sat 9 AM to 9 PM)."
+  h. Do NOT promise immediate callback unless it is certain.
+
+Also available: `check_escalation_status` — if the caller asks about an existing ticket.
 """
 
 
@@ -395,10 +430,10 @@ class Assistant(Agent):
                         '[{"product_id": "rice_basmati_1kg", "quantity": 2},
                           {"product_id": "milk_full_cream_1l", "quantity": 3}]'
 
-        Returns a line-item breakdown and grand total in ₹.
+        Returns a line-item breakdown and grand total in Rs.
         Speak it naturally, e.g.:
-        "Your total is ₹350 — that's 2 kg Basmati Rice at ₹240 and 3 litres
-         of Milk at ₹180, as of today's prices."
+        "Your total is Rs 350 -- that's 2 kg Basmati Rice at Rs 240 and 3 litres
+         of Milk at Rs 180, as of today's prices."
         If an item is unknown, tell the customer that item wasn't found and
         give a total for the rest.
         """
@@ -408,7 +443,7 @@ class Assistant(Agent):
             if not isinstance(items, list):
                 raise ValueError("items_json must be a JSON array")
         except (json.JSONDecodeError, ValueError) as exc:
-            logger.error("compute_order_total: bad items_json — %s", exc)
+            logger.error("compute_order_total: bad items_json -- %s", exc)
             return {
                 "error": "invalid_input",
                 "message": "Could not parse the item list. Please try again.",
@@ -417,14 +452,14 @@ class Assistant(Agent):
         try:
             result = catalogue.compute_order_total(items)
             logger.info(
-                "compute_order_total: grand_total=₹%d, %d line items, %d unknown",
+                "compute_order_total: grand_total=Rs%d, %d line items, %d unknown",
                 result["grand_total_inr"],
                 len(result["line_items"]),
                 len(result["unknown_ids"]),
             )
             return result
         except catalogue.CatalogueUnavailableError as exc:
-            logger.error("compute_order_total: catalogue unavailable — %s", exc)
+            logger.error("compute_order_total: catalogue unavailable -- %s", exc)
             return {
                 "error": "catalogue_unavailable",
                 "message": (
@@ -434,11 +469,169 @@ class Assistant(Agent):
                 ),
             }
         except Exception as exc:  # noqa: BLE001
-            logger.exception("compute_order_total: unexpected error — %s", exc)
+            logger.exception("compute_order_total: unexpected error -- %s", exc)
             return {
                 "error": "catalogue_unavailable",
                 "message": "Unexpected error. Tell the customer you're having trouble.",
             }
+
+    # ------------------------------------------------------------------
+    # Day 7 -- Human Escalation tools
+    # ------------------------------------------------------------------
+
+    @function_tool
+    async def create_escalation(
+        self,
+        context: RunContext,
+        user_id: str,
+        caller_name: str,
+        reason_type: str,
+        summary: str,
+        urgency: str,
+        language: str,
+        follow_up_method: str,
+        agent_checked: str,
+    ):
+        """
+        Create a human-help escalation ticket when a caller has a payment dispute
+        or an order/delivery dispute that the agent cannot resolve.
+
+        IMPORTANT: Only call this tool AFTER the caller has given verbal consent
+        to share their information with the support team. If they decline, do NOT call.
+
+        This tool will:
+        - Check for an existing open ticket (to avoid duplicates)
+        - Save the ticket to the database
+        - Send a notification to the human support team via Discord
+        - Return a reference ID to read aloud to the caller
+
+        Args:
+            user_id:          The caller's user_id from the session.
+            caller_name:      The caller's name as they introduced themselves.
+            reason_type:      One of: 'payment_dispute' | 'order_dispute'.
+            summary:          A SHORT, factual description of the problem
+                              (2-3 sentences max). Do NOT include OTPs, PINs,
+                              account numbers, phone numbers, or passwords.
+            urgency:          One of: 'low' | 'medium' | 'high' | 'emergency'.
+                              Use 'high' for payment disputes, 'medium' for order disputes.
+            language:         Language code the caller spoke in: 'en', 'hi', 'hinglish', etc.
+            follow_up_method: How the caller wants to be contacted: 'call' | 'whatsapp' | 'sms'.
+            agent_checked:    Brief note on what the agent already verified
+                              (e.g. 'Checked order status -- not found in system').
+        """
+        logger.info(
+            "create_escalation called: user_id=%s reason=%s urgency=%s",
+            user_id, reason_type, urgency,
+        )
+
+        # Validate reason_type
+        valid_reasons = ("payment_dispute", "order_dispute")
+        if reason_type not in valid_reasons:
+            return {
+                "error": "invalid_reason_type",
+                "message": f"reason_type must be one of: {valid_reasons}",
+            }
+
+        # Deduplication -- check for an existing open ticket
+        existing = database.find_open_escalation(user_id, reason_type)
+        if existing:
+            logger.info(
+                "Duplicate escalation detected: existing ref_id=%s", existing["ref_id"]
+            )
+            return {
+                "status": "duplicate",
+                "ref_id": existing["ref_id"],
+                "message": (
+                    f"An open support request already exists for this issue. "
+                    f"Reference ID: {existing['ref_id']}. "
+                    f"Our team is already working on it."
+                ),
+                "next_steps": (
+                    f"Tell the caller: 'You already have an open ticket — {existing['ref_id']}. "
+                    f"Our team will follow up via {existing.get('follow_up_method', 'call')} "
+                    f"within 24 hours.'"
+                ),
+            }
+
+        # Create the ticket
+        try:
+            ticket = database.create_escalation(
+                user_id=user_id,
+                caller_name=caller_name,
+                reason_type=reason_type,
+                summary=summary,
+                urgency=urgency,
+                language=language,
+                follow_up_method=follow_up_method,
+                agent_checked=agent_checked,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("create_escalation: DB error -- %s", exc)
+            return {
+                "error": "database_error",
+                "message": "Could not save the escalation. Please try again or direct the caller to +91-98765-43210.",
+            }
+
+        # Fire-and-forget Discord notification
+        try:
+            escalation_notifier.post_escalation_sync(ticket)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Discord notification failed (non-fatal): %s", exc)
+
+        ref_id = ticket["ref_id"]
+        logger.info("Escalation created successfully: ref_id=%s", ref_id)
+        return {
+            "status": "created",
+            "ref_id": ref_id,
+            "message": f"Support ticket created successfully. Reference ID: {ref_id}.",
+            "next_steps": (
+                f"Tell the caller their reference ID is '{ref_id}' (spell it out clearly). "
+                f"Explain: 'Our team will follow up with you via {follow_up_method} within "
+                f"24 hours during store hours — Monday to Saturday, 9 AM to 9 PM.'"
+            ),
+        }
+
+    @function_tool
+    async def check_escalation_status(
+        self,
+        context: RunContext,
+        ref_id: str,
+    ):
+        """
+        Check the current status of an existing escalation/support ticket.
+
+        Call this when the caller asks about the status of their support request
+        or mentions a reference ID they received earlier.
+
+        Args:
+            ref_id: The ticket reference ID (e.g. 'ESC-20260812-0001').
+        """
+        logger.info("check_escalation_status called: ref_id=%s", ref_id)
+        ticket = database.get_escalation(ref_id.strip().upper())
+        if not ticket:
+            return {
+                "status": "not_found",
+                "message": (
+                    f"No ticket found with reference ID {ref_id}. "
+                    "Please double-check the ID or contact us at +91-98765-43210."
+                ),
+            }
+
+        status = ticket["status"]
+        status_messages = {
+            "open":        "Your ticket is open and waiting to be assigned to a team member.",
+            "in_progress": "Your ticket is currently being reviewed by our support team.",
+            "resolved":    "Your ticket has been resolved. If you still have concerns, please call us at +91-98765-43210.",
+        }
+        return {
+            "ref_id":   ticket["ref_id"],
+            "status":   status,
+            "reason":   ticket["reason_type"],
+            "urgency":  ticket["urgency"],
+            "created":  ticket["created_at"],
+            "updated":  ticket["updated_at"],
+            "message":  status_messages.get(status, f"Status: {status}."),
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -453,6 +646,22 @@ def prewarm(proc: JobProcess):
 
 
 server.setup_fnc = prewarm
+
+
+# ---------------------------------------------------------------------------
+# Day 7 -- Start the escalation HTTP API as a background task
+# ---------------------------------------------------------------------------
+
+_escalation_api_task: "asyncio.Task | None" = None
+
+
+async def _maybe_start_escalation_api() -> None:
+    """Start the escalation API server once, on first worker process."""
+    global _escalation_api_task
+    if _escalation_api_task is None or _escalation_api_task.done():
+        import asyncio as _asyncio
+        _escalation_api_task = _asyncio.ensure_future(escalation_api.start_api_server())
+        logger.info("Escalation API server task started.")
 
 
 def _derive_user_id(ctx: JobContext) -> str:
@@ -474,6 +683,9 @@ async def my_agent(ctx: JobContext):
     ctx.log_context_fields = {
         "room": ctx.room.name,
     }
+
+    # Day 7 -- ensure the escalation HTTP API is running
+    await _maybe_start_escalation_api()
 
     _load_backend_env()
     provider = get_llm_provider()

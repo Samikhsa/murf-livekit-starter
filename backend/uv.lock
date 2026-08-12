@@ -13,6 +13,7 @@ name = "agent-starter-python"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "livekit-agents", extra = ["deepgram", "google", "silero", "turn-detector"] },
     { name = "livekit-murf" },
     { name = "livekit-plugins-noise-cancellation" },
@@ -29,6 +30,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.9" },
     { name = "livekit-agents", extras = ["deepgram", "google", "silero", "turn-detector"], specifier = "~=1.4" },
     { name = "livekit-murf", specifier = ">=0.1.1" },
     { name = "livekit-plugins-noise-cancellation", specifier = "~=0.2" },
