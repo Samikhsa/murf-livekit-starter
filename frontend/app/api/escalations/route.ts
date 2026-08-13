@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(data, { status: res.status });
   } catch (err) {
     console.error("Escalation API proxy error:", err);
-    return NextRequest.json(
+    return NextResponse.json(
       { error: "escalation_api_unavailable", escalations: [], total: 0 },
       { status: 503 }
     );

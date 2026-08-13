@@ -29,8 +29,10 @@ if __name__ == "__main__":
 
 try:
     from . import database
+    from . import analytics_api
 except ImportError:
     import database  # type: ignore[no-redef]
+    import analytics_api  # type: ignore[no-redef]
 
 logger = logging.getLogger("agent.escalation_api")
 
@@ -102,6 +104,9 @@ async def start_api_server():
     app.router.add_post("/api/escalations/{ref_id}/{status}",   handle_update_status)
     app.router.add_route("OPTIONS", "/api/escalations",         handle_options)
     app.router.add_route("OPTIONS", "/api/escalations/{ref_id}", handle_options)
+
+    # Day 8 -- register call analytics routes on the same app
+    analytics_api.register_routes(app)
 
     runner = web.AppRunner(app)
     await runner.setup()

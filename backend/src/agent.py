@@ -31,11 +31,13 @@ try:
     from . import catalogue  # Day 5 -- product catalogue tools
     from . import escalation_notifier  # Day 7 -- Discord webhook
     from . import escalation_api        # Day 7 -- HTTP dashboard API
+    from . import analytics_api         # Day 8 -- Call analytics API
 except ImportError:
     import database  # when run directly as a script
     import catalogue  # when run directly as a script
     import escalation_notifier  # type: ignore[no-redef]
     import escalation_api        # type: ignore[no-redef]
+    import analytics_api         # type: ignore[no-redef]
 
 logger = logging.getLogger("agent")
 
@@ -210,8 +212,10 @@ Also available: `check_escalation_status` — if the caller asks about an existi
 # ---------------------------------------------------------------------------
 
 class Assistant(Agent):
-    def __init__(self) -> None:
+    def __init__(self, session_state: dict) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
+        # Day 8 -- shared mutable dict to signal success from inside tool calls
+        self._session_state = session_state
 
     # ------------------------------------------------------------------
     # Memory tools
@@ -386,6 +390,9 @@ class Assistant(Agent):
             logger.info(
                 "check_catalogue: %d results for %r", result["total_found"], query
             )
+            # Day 8 -- mark this session successful (caller got product info)
+            if result.get("total_found", 0) > 0:
+                self._session_state["success"] = True
             return result
         except catalogue.CatalogueUnavailableError as exc:
             logger.error("check_catalogue: catalogue unavailable — %s", exc)
@@ -457,6 +464,8 @@ class Assistant(Agent):
                 len(result["line_items"]),
                 len(result["unknown_ids"]),
             )
+            # Day 8 -- mark successful: caller got a price total
+            self._session_state["success"] = True
             return result
         except catalogue.CatalogueUnavailableError as exc:
             logger.error("compute_order_total: catalogue unavailable -- %s", exc)
@@ -580,6 +589,8 @@ class Assistant(Agent):
 
         ref_id = ticket["ref_id"]
         logger.info("Escalation created successfully: ref_id=%s", ref_id)
+        # Day 8 -- mark successful: caller got a human escalation created
+        self._session_state["success"] = True
         return {
             "status": "created",
             "ref_id": ref_id,
@@ -680,6 +691,7 @@ def _derive_user_id(ctx: JobContext) -> str:
 
 @server.rtc_session(agent_name="my-agent")
 async def my_agent(ctx: JobContext):
+    import time as _time
     ctx.log_context_fields = {
         "room": ctx.room.name,
     }
@@ -708,6 +720,24 @@ async def my_agent(ctx: JobContext):
 
     logger.info("Session user_id derived as: %s (outbound=%s)", user_id, is_outbound)
 
+    # Day 8 -- detect channel and record call start (no PII stored)
+    import asyncio as _asyncio
+    from livekit import rtc as _rtc
+    channel = "browser"
+    for p in ctx.room.remote_participants.values():
+        if p.kind == _rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+            channel = "sip"
+            break
+
+    call_id = ctx.room.name or user_id
+    session_state: dict = {"success": False}   # shared with Assistant tools
+    call_start_time = _time.monotonic()
+
+    try:
+        database.record_call_start(call_id, room_name=ctx.room.name or call_id, channel=channel)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("record_call_start failed (non-fatal): %s", exc)
+
     if provider["provider"] == "openrouter":
         logger.info("Using OpenRouter LLM provider with model %s", provider["model"])
         llm_instance = openai.LLM.with_openrouter(
@@ -723,7 +753,7 @@ async def my_agent(ctx: JobContext):
         stt=deepgram.STT(model="nova-3", language="multi"),
         llm=llm_instance,
         tts=murf.TTS(
-            voice="Anisha",  # no locale prefix — Murf auto-selects accent per language
+            voice="Anisha",  # no locale prefix -- Murf auto-selects accent per language
             style="Conversation",
             tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
             text_pacing=True,
@@ -755,7 +785,7 @@ async def my_agent(ctx: JobContext):
 
     if is_outbound:
         initial_message = (
-            f"[SYSTEM NOTE — not spoken aloud]\n"
+            f"[SYSTEM NOTE -- not spoken aloud]\n"
             f"This is an OUTBOUND RESTOCK CALL to {customer_name!r}.\n"
             f"The caller's user_id for this session is: {user_id!r}.\n"
             f"Target Restock Product: {restock_item!r}.\n\n"
@@ -769,30 +799,54 @@ async def my_agent(ctx: JobContext):
     else:
         # Inbound call flow
         initial_message = (
-            f"[SYSTEM NOTE — not spoken aloud]\n"
+            f"[SYSTEM NOTE -- not spoken aloud]\n"
             f"The caller's user_id for this session is: {user_id!r}.\n"
             f"Your very first action must be to call the `lookup_caller` tool with this user_id.\n"
             f"Do not greet the caller until you have the result."
         )
 
-    await session.start(
-        agent=Assistant(),
-        room=ctx.room,
-        room_options=room_io.RoomOptions(
-            audio_input=room_io.AudioInputOptions(
-                noise_cancellation=lambda params: (
-                    noise_cancellation.BVCTelephony()
-                    if params.participant.kind
-                    == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
-                    else noise_cancellation.BVC()
+    try:
+        await session.start(
+            agent=Assistant(session_state=session_state),
+            room=ctx.room,
+            room_options=room_io.RoomOptions(
+                audio_input=room_io.AudioInputOptions(
+                    noise_cancellation=lambda params: (
+                        noise_cancellation.BVCTelephony()
+                        if params.participant.kind
+                        == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+                        else noise_cancellation.BVC()
+                    ),
                 ),
             ),
-        ),
-    )
+        )
 
-    # Trigger the first agent turn with the session injection
-    await session.generate_reply(instructions=initial_message)
+        # Trigger the first agent turn with the session injection
+        await session.generate_reply(instructions=initial_message)
 
+    finally:
+        # Day 8 -- record call outcome when session ends (success or failure)
+        duration = int(_time.monotonic() - call_start_time)
+        if session_state["success"]:
+            outcome = "success"
+            failure_type = None
+        else:
+            outcome = "failed"
+            # Determine failure type by duration (very short calls = user hangup)
+            failure_type = "user_hangup" if duration < 10 else "incomplete_task"
+        try:
+            database.record_call_end(
+                call_id,
+                outcome=outcome,
+                failure_type=failure_type,
+                duration_seconds=duration,
+            )
+            logger.info(
+                "Call analytics recorded: call_id=%s outcome=%s duration=%ds",
+                call_id, outcome, duration,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("record_call_end failed (non-fatal): %s", exc)
 
 
 if __name__ == "__main__":

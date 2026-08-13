@@ -82,17 +82,25 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                 className="hidden h-8 w-auto dark:block"
               />
             </div>
-            <span className="text-foreground font-mono text-xs font-bold tracking-wider uppercase">
-              Built with{' '}
+            <div className="flex items-center gap-6">
               <a
-                target="_blank"
-                rel="noopener noreferrer"
-                href="https://docs.livekit.io/agents"
-                className="underline underline-offset-4"
+                href="/dashboard"
+                className="text-foreground font-mono text-xs font-bold tracking-wider uppercase underline underline-offset-4"
               >
-                LiveKit Agents
+                📊 Dashboard
               </a>
-            </span>
+              <span className="text-foreground font-mono text-xs font-bold tracking-wider uppercase">
+                Built with{' '}
+                <a
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  href="https://docs.livekit.io/agents"
+                  className="underline underline-offset-4"
+                >
+                  LiveKit Agents
+                </a>
+              </span>
+            </div>
           </header>
 
           {children}

@@ -17,6 +17,12 @@ get_escalation(ref_id: str) -> dict | None
 list_escalations(status, limit) -> list[dict]
 update_escalation_status(ref_id, status) -> dict | None
 find_open_escalation(user_id, reason_type) -> dict | None
+
+# Day 8 — Call Analytics
+record_call_start(call_id, room_name, channel) -> dict
+record_call_end(call_id, outcome, failure_type, duration_seconds) -> dict | None
+get_call_stats() -> dict
+list_recent_calls(limit) -> list[dict]
 """
 
 import json
@@ -60,7 +66,7 @@ def _get_conn() -> sqlite3.Connection:
 
 
 def _create_tables(conn: sqlite3.Connection) -> None:
-    """Create the users, outbound_calls, and escalations tables if they do not exist."""
+    """Create the users, outbound_calls, escalations, and call_analytics tables if they do not exist."""
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -109,8 +115,23 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # Day 8 — Call Analytics (no PII stored: no names, no phone numbers, no transcripts)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS call_analytics (
+            call_id          TEXT PRIMARY KEY,
+            room_name        TEXT NOT NULL,
+            channel          TEXT NOT NULL DEFAULT 'browser',  -- browser | sip
+            outcome          TEXT NOT NULL DEFAULT 'pending',  -- pending | success | failed
+            failure_type     TEXT DEFAULT NULL,                -- user_hangup | incomplete_task | tool_error | no_response
+            duration_seconds INTEGER DEFAULT 0,
+            started_at       TEXT NOT NULL,
+            ended_at         TEXT DEFAULT NULL
+        )
+        """
+    )
     conn.commit()
-    logger.info("Database schema ready for inbound calls, outbound calls, and escalations.")
+    logger.info("Database schema ready for inbound calls, outbound calls, escalations, and call analytics.")
 
 
 
@@ -478,3 +499,142 @@ def find_open_escalation(user_id: str, reason_type: str) -> dict | None:
         )
         row = cur.fetchone()
     return dict(row) if row else None
+
+
+# ---------------------------------------------------------------------------
+# Day 8 — Call Analytics (no PII stored)
+# ---------------------------------------------------------------------------
+
+def record_call_start(
+    call_id: str,
+    room_name: str,
+    channel: str = "browser",
+) -> dict:
+    """
+    Record the start of a new call session in call_analytics.
+
+    Args:
+        call_id:   Unique identifier for this call (e.g. room name or UUID).
+        room_name: LiveKit room name.
+        channel:   'browser' or 'sip'.
+    Returns the new call record.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock:
+        conn = _get_conn()
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO call_analytics
+            (call_id, room_name, channel, outcome, started_at)
+            VALUES (?, ?, ?, 'pending', ?)
+            """,
+            (call_id, room_name, channel, now),
+        )
+        conn.commit()
+    logger.info("Call started: call_id=%s room=%s channel=%s", call_id, room_name, channel)
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute("SELECT * FROM call_analytics WHERE call_id = ?", (call_id,))
+        row = cur.fetchone()
+    return dict(row) if row else {"call_id": call_id, "room_name": room_name, "channel": channel}
+
+
+def record_call_end(
+    call_id: str,
+    outcome: str,
+    failure_type: str | None = None,
+    duration_seconds: int = 0,
+) -> dict | None:
+    """
+    Update the outcome of a call when its session ends.
+
+    Args:
+        call_id:          The same call_id used in record_call_start.
+        outcome:          'success' | 'failed'
+        failure_type:     Optional reason for failure:
+                          'user_hangup' | 'incomplete_task' | 'tool_error' | 'no_response'
+        duration_seconds: Call duration in whole seconds.
+    Returns the updated call record, or None if call_id not found.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock:
+        conn = _get_conn()
+        conn.execute(
+            """
+            UPDATE call_analytics
+            SET outcome = ?, failure_type = ?, duration_seconds = ?, ended_at = ?
+            WHERE call_id = ?
+            """,
+            (outcome, failure_type, duration_seconds, now, call_id),
+        )
+        conn.commit()
+    logger.info(
+        "Call ended: call_id=%s outcome=%s failure_type=%s duration=%ds",
+        call_id, outcome, failure_type, duration_seconds,
+    )
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute("SELECT * FROM call_analytics WHERE call_id = ?", (call_id,))
+        row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def get_call_stats() -> dict:
+    """
+    Return aggregate call statistics for the dashboard.
+
+    Returns a dict with keys:
+        total, successful, failed, pending, success_rate (0.0–100.0)
+    """
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute(
+            """
+            SELECT
+                COUNT(*)                                        AS total,
+                SUM(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END) AS successful,
+                SUM(CASE WHEN outcome = 'failed'  THEN 1 ELSE 0 END) AS failed,
+                SUM(CASE WHEN outcome = 'pending' THEN 1 ELSE 0 END) AS pending
+            FROM call_analytics
+            """
+        )
+        row = cur.fetchone()
+
+    total     = row["total"]      or 0
+    successful = row["successful"] or 0
+    failed    = row["failed"]     or 0
+    pending   = row["pending"]    or 0
+
+    completed = successful + failed
+    success_rate = round((successful / completed * 100), 1) if completed > 0 else 0.0
+
+    return {
+        "total":        total,
+        "successful":   successful,
+        "failed":       failed,
+        "pending":      pending,
+        "success_rate": success_rate,
+    }
+
+
+def list_recent_calls(limit: int = 20) -> list[dict]:
+    """
+    Return the most recent call records for the dashboard.
+
+    Privacy: only call_id, room_name, channel, outcome, failure_type, duration,
+    started_at, ended_at are returned — no caller names, phone numbers, or transcripts.
+    """
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute(
+            """
+            SELECT call_id, room_name, channel, outcome, failure_type,
+                   duration_seconds, started_at, ended_at
+            FROM call_analytics
+            ORDER BY started_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cur.fetchall()
+    return [dict(r) for r in rows]
