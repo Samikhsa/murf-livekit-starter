@@ -9,6 +9,7 @@ from livekit.agents import (
     Agent,
     AgentServer,
     AgentSession,
+    ChatContext,
     JobContext,
     JobProcess,
     RunContext,
@@ -203,8 +204,120 @@ When you detect one of these situations:
   h. Do NOT promise immediate callback unless it is certain.
 
 Also available: `check_escalation_status` — if the caller asks about an existing ticket.
+
+AGENT HANDOFF — DAY 9 RULES
+You have a specialist agent available for returns and refunds:
+
+  When the customer wants to RETURN a product, REQUEST A REFUND, ask about REFUND
+  TIMELINES, or check RETURN ELIGIBILITY:
+  a. Acknowledge their request empathetically.
+  b. Say EXACTLY: "Let me connect you to our Returns and Refunds Specialist."
+  c. IMMEDIATELY call `transfer_to_refund_specialist` — do not attempt to resolve it yourself.
+
+  Do NOT use `transfer_to_refund_specialist` for:
+  - Payment or billing disputes → use `create_escalation` instead.
+  - Order never arrived / wrong item → use `create_escalation` instead.
+  - General questions about the return policy (e.g. "how many days do I have?") →
+    you can answer these briefly yourself using your KNOWLEDGE section above.
 """
 
+
+
+# ---------------------------------------------------------------------------
+# Refund Specialist system prompt — Day 9
+# ---------------------------------------------------------------------------
+
+REFUND_SPECIALIST_PROMPT = """
+IDENTITY
+- Name: RefundMitra
+- Role: Returns & Refunds Specialist for ABC Local Store
+- Tone: Empathetic, clear, solution-focused.
+
+OBJECTIVE
+Your single job is to handle product RETURNS and REFUNDS for ABC Local Store customers.
+You are a specialist — do this one job very well.
+
+RETURN & REFUND POLICY
+- Items can be returned within 2 days of purchase.
+- The item must be in its original sealed condition.
+- The customer must provide their receipt or order reference.
+- Refunds are processed back to the original payment method within 3–5 business days.
+- Perishable items (dairy, fresh produce) are NOT eligible for return unless defective.
+- Items bought on sale or clearance are NOT eligible for return.
+- Damaged or defective items are always eligible — no exceptions.
+
+WHAT YOU DO IN EVERY CONVERSATION
+1. Greet the customer warmly and confirm you are the Returns & Refunds Specialist.
+2. Ask for the key details you need:
+   - Product name and quantity
+   - Date of purchase (within 2 days?)
+   - Reason for return (change of mind, defective, wrong item, etc.)
+   - Whether they have their receipt
+3. Based on the answers, tell them clearly:
+   a. Whether they are eligible for a return.
+   b. What they need to bring to the store (item + receipt).
+   c. How long the refund will take if eligible.
+4. If the item is NOT eligible (e.g. perishable, outside 2-day window) — explain politely and offer alternatives such as speaking to the store manager.
+5. If the customer mentions a PAYMENT DISPUTE or DOUBLE CHARGE — do NOT handle it. Say:
+   "This sounds like a billing dispute. Let me send you back to ShopMitra who can raise a formal support ticket for you."
+
+LANGUAGE & SCRIPT
+Always write every language in its own native script.
+- Hindi → Devanagari (नमस्ते), never romanized.
+- Always detect the user's language automatically and reply in the same language.
+- Match the user's Hinglish style naturally if they use it.
+
+GUARDRAILS
+- Never confirm a refund has been processed — the store staff do that in person.
+- Never ask for or store payment credentials, OTPs, or PINs.
+- Never invent policies not listed above.
+- Keep responses short (1–3 sentences). This is a voice conversation.
+- If unsure about a special case, say: "For this specific case, I'd recommend visiting the store and speaking with our manager directly."
+
+SCOPE LIMITS
+- Do NOT answer product availability or pricing questions — redirect to ShopMitra.
+- Do NOT answer delivery or order-tracking questions — redirect to ShopMitra.
+- Stay focused on returns and refunds only.
+"""
+
+
+# ---------------------------------------------------------------------------
+# RefundAgent — Returns & Refunds Specialist (Day 9)
+# ---------------------------------------------------------------------------
+
+class RefundAgent(Agent):
+    """Specialist agent that handles product returns and refund requests."""
+
+    def __init__(
+        self,
+        chat_ctx: ChatContext | None = None,
+        session_state: dict | None = None,
+    ) -> None:
+        super().__init__(
+            instructions=REFUND_SPECIALIST_PROMPT,
+            chat_ctx=chat_ctx,
+            tts=murf.TTS(
+                voice="Priya",  # distinct voice so user hears the handoff
+                style="Conversation",
+                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+                text_pacing=True,
+            ),
+        )
+        self._session_state = session_state or {}
+
+    async def on_enter(self) -> None:
+        """Called automatically by LiveKit when this agent takes over the session."""
+        logger.info("RefundAgent.on_enter — specialist taking over session")
+        await self.session.generate_reply(
+            instructions=(
+                "Introduce yourself as RefundMitra, the Returns and Refunds Specialist "
+                "for ABC Local Store. Keep it warm and brief (1–2 sentences). "
+                "Acknowledge what the customer wants to do based on the conversation so far, "
+                "then ask for the first piece of information you need "
+                "(product name or date of purchase) to assess eligibility. "
+                "Do NOT repeat what the customer already told the previous agent."
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -643,6 +756,42 @@ class Assistant(Agent):
             "updated":  ticket["updated_at"],
             "message":  status_messages.get(status, f"Status: {status}."),
         }
+
+    # ------------------------------------------------------------------
+    # Day 9 — Agent Handoff tool
+    # ------------------------------------------------------------------
+
+    @function_tool
+    async def transfer_to_refund_specialist(
+        self,
+        context: RunContext,
+    ) -> tuple[Agent, str]:
+        """
+        Transfer the customer to the Returns and Refunds Specialist (RefundMitra).
+
+        Use this tool when the customer wants to:
+        - Return a product they purchased at ABC Local Store
+        - Request a refund for an item
+        - Ask about the refund process or how long it takes
+        - Ask what items are eligible for return
+        - Report a defective or wrong item they want to send back
+
+        Do NOT use this for payment/billing disputes (use create_escalation instead)
+        or for orders that never arrived (also use create_escalation).
+
+        Before calling this tool, say aloud:
+        "Let me connect you to our Returns and Refunds Specialist."
+        """
+        logger.info(
+            "transfer_to_refund_specialist called — handing off to RefundAgent"
+        )
+        refund_agent = RefundAgent(
+            chat_ctx=self.chat_ctx.copy(exclude_instructions=True),
+            session_state=self._session_state,
+        )
+        # Mark session successful — customer reached the right specialist
+        self._session_state["success"] = True
+        return refund_agent, "Let me connect you to our Returns and Refunds Specialist."
 
 
 # ---------------------------------------------------------------------------
