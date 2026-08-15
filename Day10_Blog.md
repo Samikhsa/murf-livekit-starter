@@ -185,7 +185,7 @@ The multilingual turn detector from LiveKit helped the agent know when the user 
 ### Step 1: Clone the repo
 
 ```bash
-git clone https://github.com/Taukeer1256/murf-livekit-starter.git
+git clone https://github.com/Samikhsa/murf-livekit-starter.git
 cd murf-livekit-starter
 ```
 
@@ -243,7 +243,7 @@ Try these prompts:
 
 ## Links
 
-- 🔗 **GitHub Repository:** [github.com/Taukeer1256/murf-livekit-starter](https://github.com/Taukeer1256/murf-livekit-starter)
+- 🔗 **GitHub Repository:** [github.com/Samikhsa/murf-livekit-starter](https://github.com/Samikhsa/murf-livekit-starter)
 - 🎙️ **Murf Falcon TTS:** [murf.ai/falcon](https://murf.ai/falcon) — 55ms latency, 150+ voices, 35+ languages
 - 📖 **Falcon 2 Documentation:** [murf.ai/api/docs/text-to-speech-models/falcon-2](https://murf.ai/api/docs/text-to-speech-models/falcon-2)
 - 🧪 **LiveKit Voice AI Quickstart:** [docs.livekit.io/agents/start/voice-ai](https://docs.livekit.io/agents/start/voice-ai/)
